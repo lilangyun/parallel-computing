@@ -1,0 +1,8 @@
+#!/bin/bash
+#PBS -N calsin
+#PBS -l nodes=1:ppn=4
+#PBS -j oe
+
+cd $PBS_O_WORKDIR
+procs=$(cat $PBS_NODEFILE | wc -l)
+time ./calsin.o 0.78 1000000 $procs >& run.log

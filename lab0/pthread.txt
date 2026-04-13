@@ -1,0 +1,18 @@
+    double x = atof(argv[1]);
+    long n = atol(argv[2]);
+    int m = atoi(argv[3]);
+
+    pthread_t tid;
+    void *exit_status;
+    int val;
+    pthread_create(&tid, NULL, pthread_function, &val);
+
+    pthread_join(tid, &exit_status);
+
+    pthread_self();
+    pthread_equal(pthread_t tid1, pthread_t tid2);
+
+    void pthread_exit(void *status);
+    pthread_cancel(tid);
+
+    pthread_detach(tid);  // 线程分离

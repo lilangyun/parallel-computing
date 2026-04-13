@@ -1,0 +1,8 @@
+#!/bin/bash
+#PBS -N pthread
+#PBS -l nodes=1:ppn=4
+#PBS -j oe
+
+cd $PBS_O_WORKDIR
+procs=$(cat $PBS_NODEFILE | wc -l)
+./sparse.o matrix.txt vector.txt $procs &> run.log
