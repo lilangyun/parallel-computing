@@ -11,6 +11,8 @@ void cg_serial(int n, const double* values, const int* row_ptr, const int* col_i
     const double* b, double* x, int max_iter, double tol);
 
 int main(int argc, char* argv[]){
+    MPI_Init(&argc, &argv);
+
     if(argc != 3){
         printf("Parameter falied!\n");
         exit(-1);
@@ -51,6 +53,7 @@ int main(int argc, char* argv[]){
 
     // cg
     x = (double *)malloc(n*sizeof(double));
+
     cg_serial(n, values, row_ptr, col_idx, b, x, 100, tol);
     // end
 
@@ -66,6 +69,8 @@ int main(int argc, char* argv[]){
     fclose(matrix_fd);
     fclose(vector_fd);
     /* Clear Ending */
+
+    MPI_Finalize();
 }
 
 // 输入：n(矩阵维度), values(非零元素), row_ptr(行偏移), col_idx(列索引), b(右端向量),maxiter(最大迭代次数), tol(收敛精度)// 输出：x(解向量，函数内会覆盖初始值)
@@ -76,11 +81,14 @@ void cg_serial(int n, const double* values, const int* row_ptr, const int* col_i
         // 内存分配失败，直接返回
         return;
     }
+
+    double *global_p = (double *)malloc(n * sizeof(double));  // Set global p to exactly calculate.
     // 2. 初始化：x=0, r=b-Ax=b, p=r
     for (int i = 0; i < n; i++) {
         x[i] = 0.0;
         r[i] = b[i];
         p[i] = r[i];
+        global_p[i] = r[i];
     }
     // 3. 计算初始残差内积 rho0 = r₀·r₀
     double rho0 = 0.0;
@@ -94,11 +102,21 @@ void cg_serial(int n, const double* values, const int* row_ptr, const int* col_i
 
     // MPI Begining
     int myid, num_procs;
-    MPI_Init(0, NULL);
     MPI_Comm_rank(MPI_COMM_WORLD, &myid);
     MPI_Comm_size(MPI_COMM_WORLD, &num_procs);
-
     int block = n / num_procs;
+
+    /* Assign recvcounts and displs */
+    int *recvcounts = (int *)malloc(num_procs * sizeof(int));
+    int *displs = (int *)malloc(num_procs * sizeof(int));
+    for( int i = 0; i < num_procs; i++){
+        recvcounts[i] = (i == (num_procs - 1)) ?  n - i * block : block;
+        displs[i] = i * block;
+    }
+    /* Ending */
+
+    double *global_x = (myid == 0) ? (double *)malloc(n * sizeof(double)) : NULL;
+
     int start = myid * block;
     int end = (myid == num_procs - 1) ? n : start + block;
 
@@ -108,7 +126,7 @@ void cg_serial(int n, const double* values, const int* row_ptr, const int* col_i
     // 4. 迭代核心逻辑
     for (int iter = 0; iter < max_iter; iter++) {
         // 4.1 计算 Ap = A*p
-        spmv_csr(n, values, row_ptr, col_idx, p, Ap, start, end);
+        spmv_csr(n, values, row_ptr, col_idx, global_p, Ap, start, end);
 
         // 4.2 计算 p·Ap，避免除以 0
         double my_pAp = 0.0;
@@ -124,10 +142,11 @@ void cg_serial(int n, const double* values, const int* row_ptr, const int* col_i
         // 4.3 计算步长 alpha = rho0 / (p·Ap)
         double alpha = rho0 / pAp;
         // 4.4 更新解 x 和残差 r：x = x + alpha*p; r = r - alpha*Ap
-        for (int i = 0; i < n; i++) {
+        for (int i = start; i < end; i++) {
             x[i] += alpha * p[i];
             r[i] -= alpha * Ap[i];
         }
+        MPI_Gatherv(x, end - start, MPI_DOUBLE, global_x, recvcounts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
         // 4.5 计算新残差内积并判断收敛
         double my_rho_new = 0.0;
@@ -135,7 +154,7 @@ void cg_serial(int n, const double* values, const int* row_ptr, const int* col_i
         for (int i = start; i < end; i++) {
             my_rho_new += r[i] * r[i];
         }
-
+        MPI_Allreduce(&my_rho_new, &rho_new, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
         double res_norm = sqrt(rho_new); // 残差 L2 范数
         if (res_norm < tol) { // 满足收敛精度，提前退出
             if(!myid){
@@ -146,21 +165,22 @@ void cg_serial(int n, const double* values, const int* row_ptr, const int* col_i
 
         // 4.6 计算 beta 并更新搜索方向 p：p = r + beta*p
         double beta = rho_new / rho0;
-        for (int i = 0; i < n; i++) {
+        for (int i = start; i < end; i++) {
             p[i] = r[i] + beta * p[i];
         }
-
+        MPI_Gatherv(p, end - start, MPI_DOUBLE, global_p, recvcounts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        MPI_Bcast(global_p, n, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        
         // 4.7 更新 rho0 为下一次迭代使用
         rho0 = rho_new;
     }
 
     if(!myid){
         for(int i=0; i < n; i++){
-            printf("%lf ", x[i]);
+            // printf("%lf ", global_x[i]);
         }
-        printf("\n");
+        // printf("\n");
     }
-    MPI_Finalize();
 
     // 5. 释放内存（避免内存泄漏）
     free(r);
