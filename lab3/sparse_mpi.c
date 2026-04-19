@@ -4,13 +4,11 @@
 #include <assert.h>
 #include "mpi.h"
 
-void spmv_csr(int n, const double* values, const int* row_ptr, const int* col_idx, const double* x, double* y,
-                int myid, int step);
-
 void cg_serial(int n, const double* values, const int* row_ptr, const int* col_idx,
     const double* b, double* x, int max_iter, double tol);
 
 int main(int argc, char* argv[]){
+    // MPI initialize
     MPI_Init(&argc, &argv);
 
     if(argc != 3){
@@ -71,6 +69,7 @@ int main(int argc, char* argv[]){
     /* Clear Ending */
 
     MPI_Finalize();
+    // MPI End
 }
 
 // 输入：n(矩阵维度), values(非零元素), row_ptr(行偏移), col_idx(列索引), b(右端向量),maxiter(最大迭代次数), tol(收敛精度)// 输出：x(解向量，函数内会覆盖初始值)
@@ -97,7 +96,8 @@ void cg_serial(int n, const double* values, const int* row_ptr, const int* col_i
     }
     // 初始残差范数已满足精度，直接返回
     if (sqrt(rho0) < tol) {
-        free(r); free(p); free(Ap);return;
+        free(r); free(p); free(Ap);
+        return;
     }
 
     // MPI Begining
@@ -126,7 +126,14 @@ void cg_serial(int n, const double* values, const int* row_ptr, const int* col_i
     // 4. 迭代核心逻辑
     for (int iter = 0; iter < max_iter; iter++) {
         // 4.1 计算 Ap = A*p
-        spmv_csr(n, values, row_ptr, col_idx, global_p, Ap, start, end);
+        for (int i = start; i < end; i++) {
+            // 初始化输出向量为 0
+            Ap[i] = 0.0;
+            // 遍历第 i 行的所有非零元素
+            for (int j = row_ptr[i]; j < row_ptr[i+1]; j++) {
+                Ap[i] += values[j] * p[col_idx[j]];
+            }
+        }
 
         // 4.2 计算 p·Ap，避免除以 0
         double my_pAp = 0.0;
@@ -146,7 +153,6 @@ void cg_serial(int n, const double* values, const int* row_ptr, const int* col_i
             x[i] += alpha * p[i];
             r[i] -= alpha * Ap[i];
         }
-        MPI_Gatherv(x, end - start, MPI_DOUBLE, global_x, recvcounts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
 
         // 4.5 计算新残差内积并判断收敛
         double my_rho_new = 0.0;
@@ -168,39 +174,23 @@ void cg_serial(int n, const double* values, const int* row_ptr, const int* col_i
         for (int i = start; i < end; i++) {
             p[i] = r[i] + beta * p[i];
         }
-        MPI_Gatherv(p, end - start, MPI_DOUBLE, global_p, recvcounts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-        MPI_Bcast(global_p, n, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        MPI_Allgatherv(p, end - start, MPI_DOUBLE, global_p, recvcounts, displs, MPI_DOUBLE, MPI_COMM_WORLD);
         
         // 4.7 更新 rho0 为下一次迭代使用
         rho0 = rho_new;
     }
 
+    MPI_Gatherv(x, end - start, MPI_DOUBLE, global_x, recvcounts, displs, MPI_DOUBLE, 0, MPI_COMM_WORLD);
     if(!myid){
+        FILE *fd = fopen("result.txt", "w");
         for(int i=0; i < n; i++){
-            // printf("%lf ", global_x[i]);
+            fprintf(fd, "%lf ", global_x[i]);
         }
-        // printf("\n");
+        fprintf(fd, "\n");
     }
 
     // 5. 释放内存（避免内存泄漏）
     free(r);
     free(p);
     free(Ap);
-}
-
-// 稀疏矩阵-向量乘法 (CSR 格式)
-// 输入：n(矩阵维度), values(非零元素值), row_ptr(行偏移), col_idx(列索引), x(输入向量)
-// 输出：y(输出向量，y = A*x)
-void spmv_csr(int n, const double* values, const int* row_ptr, const int* col_idx,const double* x, double* y,
-                int start, int end) {
-    // CSR 格式矩阵乘向量核心逻辑
-    for (int i = start; i < end; i++) {
-        // 初始化输出向量为 0
-        y[i] = 0.0;
-        // 遍历第 i 行的所有非零元素
-        for (int j = row_ptr[i]; j < row_ptr[i+1]; j++) {
-            y[i] += values[j] * x[col_idx[j]];
-        }
-    }
-    // 这里 y 是 Ap, x 是 p.
 }
