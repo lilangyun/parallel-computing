@@ -1,7 +1,17 @@
 #!/bin/bash
 #PBS -N sparse_mpi
-#PBS -l nodes=2:ppn=2
+#PBS -l nodes=1:ppn=16
 #PBS -j oe
 cd $PBS_O_WORKDIR
 procs=$(cat $PBS_NODEFILE | wc -l) # 计算分配的核数
-mpirun -np $procs -machinefile $PBS_NODEFILE ./sparse_mpi.o matrix.txt vector.txt &> run.log
+
+echo "串行"
+mpirun -np 1 -machinefile $PBS_NODEFILE ./sparse.o matrix.txt vector.txt
+echo "2线程"
+mpirun -np 2 -machinefile $PBS_NODEFILE ./sparse.o matrix.txt vector.txt
+echo "4线程"
+mpirun -np 4 -machinefile $PBS_NODEFILE ./sparse.o matrix.txt vector.txt
+echo "8线程"
+mpirun -np 8 -machinefile $PBS_NODEFILE ./sparse.o matrix.txt vector.txt
+echo "16线程"
+mpirun -np 16 -machinefile $PBS_NODEFILE ./sparse.o matrix.txt vector.txt

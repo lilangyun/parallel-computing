@@ -1,0 +1,50 @@
+/* 伪代码 */
+
+/* 主函数 */
+int main () {
+    /* 必要变量 */
+    数据规模 n;
+    稀疏矩阵 A, 解向量 x, 参数向量 b;
+
+    /* 从文件中读取数据 */
+    read(&A, &b);
+    
+    /* 调用cg函数 */
+    cg(n, A, b, x);
+}
+
+/* 共轭梯度法求解函数 */
+void cg() {
+    /* 必要变量 */
+    局部向量 r, p, Ap; 全局向量 global_p, global_x;
+    局部变量 my_pAp, my_rho; 全局变量 pAp, rho, rho_new;
+
+    /* 必要的初始化 */
+    Init(&r, &p, &Ap, &rho);
+
+    /* 关键循环 */
+    for iter = 1 to max_iter :
+        /* Ap = (A * global_p) */
+        spmv(&Ap, A, global_p);
+
+        /* 计算局部 pAp 并规约 */
+        get(&my_pAp);
+        MPI_Allreduce(my_pAp, &pAp);
+
+        /* 更新 x 和 r */
+        update(&x, &r);
+
+        /* 计算局部 rho 并规约 */
+        get(&my_rho);
+        MPI_Allreduce(my_rho, rho_new);
+
+        /* 更新 p 并广播 */
+        update(&p);
+        MPI_Allgatherv(p, &global_p);
+
+    /* root 进程 Gather global_x */
+    MPI_Gatherv(x, global_x, 0);
+
+    /* 打印解向量 x */
+    print(x);
+}
