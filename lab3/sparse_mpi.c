@@ -18,6 +18,9 @@ int main(int argc, char* argv[]){
     /* Input begin */
     FILE* matrix_fd = fopen(argv[1], "r");
     FILE* vector_fd = fopen(argv[2], "r");
+    if (matrix_fd == NULL || vector_fd == NULL) {
+        fprintf(stderr, "[ERROR] matrix.txt or vector.txt fails to be open!\n");
+    }
     int n;  // matrix dimension
     double *values; int *row_ptr; int *col_idx;  // csr matrix
     double *x; double *b;

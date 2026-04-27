@@ -134,13 +134,9 @@ void cg_serial(int n, const double* values, const int* row_ptr, const int* col_i
 // 输入：n(矩阵维度), values(非零元素值), row_ptr(行偏移), col_idx(列索引), x(输入向量)
 // 输出：y(输出向量，y = A*x)
 void spmv_csr(int n, const double* values, const int* row_ptr, const int* col_idx,const double* x, double* y) {
-    // 初始化输出向量为 0
-    for (int i = 0; i < n; i++) 
-    {
-        y[i] = 0.0;
-    }
     // CSR 格式矩阵乘向量核心逻辑
     for (int i = 0; i < n; i++) {
+        y[i] = 0.0;
         // 遍历第 i 行的所有非零元素
         for (int j = row_ptr[i]; j < row_ptr[i+1]; j++) {
             y[i] += values[j] * x[col_idx[j]];

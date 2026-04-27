@@ -1,4 +1,3 @@
-// ssh -p 9922 CQ094@172.28.9.54
 #include<stdio.h>
 #include<stdlib.h>
 #include<math.h>
@@ -87,7 +86,7 @@ int main(int argc, char* argv[]){
     }
     // end
 
-    cg_serial(n, 100, 1e-15);
+    cg_serial(n, 2000, 1e-15);
 
     // Join pthread
     void *status;

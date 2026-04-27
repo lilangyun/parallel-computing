@@ -47,32 +47,25 @@ int main(int argc, char* argv[]){
     FILE* matrix_fd = fopen(argv[1], "r");
     FILE* vector_fd = fopen(argv[2], "r");
     pn = atoi(argv[3]);
-    // end
 
     // scan data
     fscanf(matrix_fd, "%d", &n);
-
     row_ptr = (int *)malloc((n+1)*sizeof(int));
-
     for(int i=0;i<n+1;i++){
         fscanf(matrix_fd, "%d", &row_ptr[i]);
     }
-
     values = (double *)malloc(row_ptr[n]*sizeof(double));
     col_idx = (int *)malloc(row_ptr[n]*sizeof(int));
-    
     for(int i=0;i<row_ptr[n];i++){
         fscanf(matrix_fd, "%d", &col_idx[i]);
     }
     for(int i=0;i<row_ptr[n];i++){
         fscanf(matrix_fd, "%lf", &values[i]);
     }
-
     b = (double*)malloc(n*sizeof(double));
     for(int i=0;i<n;i++){
         fscanf(vector_fd, "%lf", &b[i]);
     }
-    // end
 
     // cg
     pthread_mutex_init(&mutex, NULL);
@@ -84,23 +77,21 @@ int main(int argc, char* argv[]){
     for(int i=0;i<pn;i++){
         pthread_create(&tid[i], NULL, pthread_function, (void *)i);
     }
-    // end
 
-    cg_serial(n, 100, 1e-15);
+    cg_serial(n, 1000, 1e-15);
 
     // Join pthread
     void *status;
     for(int i=0;i<pn;i++){
         pthread_join(tid[i], &status);
     }
-    // end
 
     // print
+    FILE *fd = fopen("result.txt", "w");
     for(int i=0;i<n;i++){
-        printf("%lf ", x[i].data);
+        fprintf(fd, "%lf ", x[i].data);
     }
     printf("\n");
-    // end
 
     // Handle "tail"
     free(tid);
@@ -109,10 +100,8 @@ int main(int argc, char* argv[]){
     free(col_idx);
     free(x);
     free(b);
-
     fclose(matrix_fd);
     fclose(vector_fd);
-    // end
 
     return 0;
 }
@@ -127,7 +116,6 @@ void cg_serial(int n, int max_iter, double tol){
     if(r == NULL || p == NULL || Ap == NULL || tt == NULL || ttt == NULL){
         return ;
     }
-    // end
 
     // initialize data
     for(int i=0;i<n;i++){
@@ -223,59 +211,53 @@ void *pthread_function(void *val){
 
     // infinite loop
     while(1){
-
-    // sychronize the iter    
-    barrier();
-    if(stop){
-        break;
-    }
-    // end
-
-    // spmv_csr(n, values, row_ptr, col_idx, p, Ap);
-    for(int i=begin;i<end;i++){
-        Ap[i].data=0.0;
-    }
-    for(int i=begin;i<end;i++){
-        for(int j=row_ptr[i]; j<row_ptr[i+1]; j++){
-            // 计算A*p[begin, end)
-            Ap[i].data += p[col_idx[j]].data * values[j];
+        // sychronize the iter    
+        barrier();
+        if(stop){
+            break;
         }
-    }
-    // end
 
-    // pAp
-    for(int i=begin;i<end;i++){
-        // p[begin, end) * Ap[begin, end)
-        tt[v].data += p[i].data * Ap[i].data;
-    }
-    barrier();
-    barrier();
-    // end
+        // spmv_csr(n, values, row_ptr, col_idx, p, Ap);
+        for(int i=begin;i<end;i++){
+            p[i].data=0.0;
+        }
+        for(int i=begin;i<end;i++){
+            for(int j=row_ptr[i]; j<row_ptr[i+1]; j++){
+                // 计算A*p[begin, end)
+                Ap[i].data += p[col_idx[j]].data * values[j];
+            }
+        }
 
-    // update x and r
-    double alpha = rho0 / pAp;
-    for(int i=begin;i<end;i++){
-        x[i].data += alpha * p[i].data;
-        r[i].data -= alpha * Ap[i].data;
-    }
-    // end
+        // pAp
+        for(int i = begin; i < end; i++){
+            // p[begin, end) * Ap[begin, end)
+            tt[v].data += p[i].data * Ap[i].data;
+        }
+        barrier();
+        barrier();
 
-    // rho_new
-    for(int i=begin;i<end;i++){
-        ttt[v].data += r[i].data*r[i].data;
-    }
-    barrier();
-    barrier();
-    // end
+        // update x and r
+        double alpha = rho0 / pAp;
+        for(int i = begin; i < end; i++){
+            x[i].data += alpha * p[i].data;
+            r[i].data -= alpha * Ap[i].data;
+        }
 
-    // update p
-    double beta=rho_new / rho0;
-    for(int i=begin;i<end;i++){
-        p[i].data=r[i].data + beta * p[i].data;
-    }
-    // end
+        // rho_new
+        for(int i = begin; i < end; i++){
+            ttt[v].data += r[i].data*r[i].data;
+        }
+        barrier();
+        barrier();
 
-    }  // while(1) end
+        // update p
+        double beta = rho_new / rho0;
+        for(int i = begin; i < end; i++){
+            p[i].data = r[i].data + beta * p[i].data;
+        }
+
+    }
+
     return NULL;
 }
 

@@ -1,17 +1,57 @@
 #!/bin/bash
-#PBS -N sparse_mpi
-#PBS -l nodes=1:ppn=16
-#PBS -j oe
-cd $PBS_O_WORKDIR
-procs=$(cat $PBS_NODEFILE | wc -l) # 计算分配的核数
+#PBS -N sparse_benchmark
+#PBS -l nodes=1:ppn=32
+#PBS -l walltime=01:00:00
+#PBS -q batch
+#PBS -o benchmark_%j.out
+#PBS -e benchmark_%j.err
 
-echo "串行"
-mpirun -np 1 -machinefile $PBS_NODEFILE ./sparse.o matrix.txt vector.txt
-echo "2线程"
-mpirun -np 2 -machinefile $PBS_NODEFILE ./sparse.o matrix.txt vector.txt
-echo "4线程"
-mpirun -np 4 -machinefile $PBS_NODEFILE ./sparse.o matrix.txt vector.txt
-echo "8线程"
-mpirun -np 8 -machinefile $PBS_NODEFILE ./sparse.o matrix.txt vector.txt
-echo "16线程"
-mpirun -np 16 -machinefile $PBS_NODEFILE ./sparse.o matrix.txt vector.txt
+cd $PBS_O_WORKDIR
+
+# 配置
+PROG="./sparse_mpi"
+RUNS=5
+THREADS=(1 2 4 8 16)
+
+echo "========================================"
+echo "Sparse Matrix MPI Benchmark"
+echo "Start time: $(date)"
+echo "Running on node: $(hostname)"
+echo "========================================"
+echo ""
+
+for n in ${THREADS[@]}; do
+    echo "Testing with $n threads..."
+    echo "----------------------------------------"
+    
+    total_real=0
+    total_user=0
+    total_sys=0
+    
+    for i in $(seq 1 $RUNS); do
+        echo "  Run $i:"
+        # 捕获time命令的输出
+        result=$( { /usr/bin/time -f "%e %U %S" mpirun -np $n $PROG; } 2>&1 )
+        read real user sys <<< "$result"
+        
+        echo "    Real: ${real}s, User: ${user}s, Sys: ${sys}s"
+        
+        # 累加
+        total_real=$(echo "$total_real + $real" | bc)
+        total_user=$(echo "$total_user + $user" | bc)
+        total_sys=$(echo "$total_sys + $sys" | bc)
+    done
+    
+    # 计算平均值
+    avg_real=$(echo "scale=3; $total_real / $RUNS" | bc)
+    avg_user=$(echo "scale=3; $total_user / $RUNS" | bc)
+    avg_sys=$(echo "scale=3; $total_sys / $RUNS" | bc)
+    
+    echo "  === Average of $RUNS runs ==="
+    echo "  Real: ${avg_real}s, User: ${avg_user}s, Sys: ${avg_sys}s"
+    echo ""
+done
+
+echo "========================================"
+echo "End time: $(date)"
+echo "Benchmark complete!"
