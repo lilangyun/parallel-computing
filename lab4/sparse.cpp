@@ -17,6 +17,12 @@ void cg_serial(int n, const double* values, const int* row_ptr, const int* col_i
 void spmv_cpu(int n, const double* values, const int* row_ptr, const int* col_idx,
     const double* x, double* y);
 
+double get_time() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return tv.tv_sec + tv.tv_usec * 1e-6;
+}
+
 int main(int argc, char* argv[]){
     if(argc != 3){
         printf("Parameter falied!\n");
@@ -25,9 +31,8 @@ int main(int argc, char* argv[]){
 
     // Variants
     int n;
-    double *values;int *row_ptr;int *col_idx; 
-    double *x;double *b; 
-    int p;
+    double *values; int *row_ptr; int *col_idx; 
+    double *x_cpu; double *x_gpu; double *b; 
 
     // Input
     FILE* matrix_fd = fopen(argv[1], "r");
@@ -50,32 +55,42 @@ int main(int argc, char* argv[]){
         fscanf(vector_fd, "%lf", &b[i]);
     }
 
-    // cg
-    x = (double *)malloc(n*sizeof(double));
-    cg_serial(n, values, row_ptr, col_idx, b, x, 2000, 1e-5);
+    // cg_cpu
+    double start = get_time();
+    x_cpu = (double *)malloc(n*sizeof(double));
+    cg_serial(n, values, row_ptr, col_idx, b, x_cpu, 2000, 1e-5);
+    double cpu_time = get_time() - start;
 
-    // print
-    FILE *fd = fopen("result.txt", "w");
-    for(int i=0;i<n;i++){
-        fprintf(fd, "%lf ", x[i]);
-    }
-    fprintf(fd, "\n");
+    // cg_gpu
+    start = get_time();
+    x_gpu = (double *)malloc(n*sizeof(double));
+    cg_parallel(n, values, row_ptr, col_idx, b, x_gpu, 2000, 1e-5);
+    double gpu_time = get_time() - start;
+
+    // Info
+    double speedup = cpu_time / gpu_time;
+    printf("Matrix size: %d x %d.\n", n, n);
+    printf("CPU time: %.6lfs.\n", cpu_time);
+    printf("GPU time: %.6lfs.\n", gpu_time);
+    printf("Speedup : %.2lfs.\n", speedup);
 
     // Clean up
     free(values);
     free(row_ptr);
     free(col_idx);
-    free(x);
     free(b);
     fclose(matrix_fd);
     fclose(vector_fd);
-    fclose(fd);
 }
 
-// 输入：n(矩阵维度), values(非零元素), row_ptr(行偏移), col_idx(列索引), b(右端向量),maxiter(最大迭代次数), tol(收敛精度)// 输出：x(解向量，函数内会覆盖初始值)
-void cg_parallel(int n, const double* values, const int* row_ptr, const int* col_idx,const double* b, double* x, int max_iter, double tol) {
+// 输入：n(矩阵维度), values(非零元素), row_ptr(行偏移), col_idx(列索引), 
+// b(右端向量),maxiter(最大迭代次数), tol(收敛精度)// 输出：x(解向量，函数内会覆盖初始值)
+void cg_parallel(int n, const double* values, const int* row_ptr, const int* col_idx,
+    const double* b, double* x, int max_iter, double tol) {
     // 1. 内存分配并检查是否成功
-    double *r = (double*)malloc(n * sizeof(double));double *p = (double*)malloc(n * sizeof(double));double *Ap = (double*)malloc(n * sizeof(double));
+    double *r = (double*)malloc(n * sizeof(double));
+    double *p = (double*)malloc(n * sizeof(double));
+    double *Ap = (double*)malloc(n * sizeof(double));
     if (r == NULL || p == NULL || Ap == NULL) {
         // 内存分配失败，直接返回
         return;
@@ -100,11 +115,16 @@ void cg_parallel(int n, const double* values, const int* row_ptr, const int* col
     // GPU 
     double *dv, *dp, *dap;
     int *dr, *dc;
-    hipMalloc(&dv, row_ptr[n] * sizeof(double)); hipMemcpy(dv, values, row_ptr[n] * sizeof(double), hipMemcpyHostToDevice);
-    hipMalloc(&dr, (n + 1) * sizeof(int)); hipMemcpy(dr, row_ptr, (n + 1) * sizeof(int), hipMemcpyHostToDevice);
-    hipMalloc(&dc, row_ptr[n] * sizeof(int)); hipMemcpy(dc, col_idx, row_ptr[n] * sizeof(int), hipMemcpyHostToDevice);
-    hipMalloc(&dp, n * sizeof(double)); hipMemcpy(dp, p, n * sizeof(double), hipMemcpyHostToDevice);
+    hipMalloc(&dv, row_ptr[n] * sizeof(double)); 
+    hipMemcpy(dv, values, row_ptr[n] * sizeof(double), hipMemcpyHostToDevice);
+    hipMalloc(&dr, (n + 1) * sizeof(int)); 
+    hipMemcpy(dr, row_ptr, (n + 1) * sizeof(int), hipMemcpyHostToDevice);
+    hipMalloc(&dc, row_ptr[n] * sizeof(int)); 
+    hipMemcpy(dc, col_idx, row_ptr[n] * sizeof(int), hipMemcpyHostToDevice);
+    hipMalloc(&dp, n * sizeof(double)); 
+    hipMemcpy(dp, p, n * sizeof(double), hipMemcpyHostToDevice);
     hipMalloc(&dap, n * sizeof(double));
+    // 设置 grid 和 block 大小
     int blockSize = 256;
     int gridSize = (n + blockSize - 1) / blockSize;
 
@@ -162,7 +182,8 @@ void cg_parallel(int n, const double* values, const int* row_ptr, const int* col
 // 稀疏矩阵-向量乘法 (CSR 格式)
 // 输入：n(矩阵维度), values(非零元素值), row_ptr(行偏移), col_idx(列索引), x(输入向量)
 // 输出：y(输出向量，y = A*x)
-__global__ void spmv_csr(int n, const double* values, const int* row_ptr, const int* col_idx,const double* x, double* y) {
+__global__ void spmv_csr(int n, const double* values, const int* row_ptr, const int* col_idx,
+    const double* x, double* y) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
 
     // CSR 格式矩阵乘向量核心逻辑
@@ -175,10 +196,13 @@ __global__ void spmv_csr(int n, const double* values, const int* row_ptr, const 
     }
 }
 
-// CPU版本CG求解
-void cg_serial(int n, const double* values, const int* row_ptr, const int* col_idx,const double* b, double* x, int max_iter, double tol) {
+// CPU--串行CG求解
+void cg_serial(int n, const double* values, const int* row_ptr, const int* col_idx,
+    const double* b, double* x, int max_iter, double tol) {
     // 1. 内存分配并检查是否成功
-    double *r = (double*)malloc(n * sizeof(double));double *p = (double*)malloc(n * sizeof(double));double *Ap = (double*)malloc(n * sizeof(double));
+    double *r = (double*)malloc(n * sizeof(double));
+    double *p = (double*)malloc(n * sizeof(double));
+    double *Ap = (double*)malloc(n * sizeof(double));
     if (r == NULL || p == NULL || Ap == NULL) {
         // 内存分配失败，直接返回
         return;
@@ -244,7 +268,8 @@ void cg_serial(int n, const double* values, const int* row_ptr, const int* col_i
 }
 
 // cpu版本稀疏矩阵乘法
-void spmv_cpu(int n, const double* values, const int* row_ptr, const int* col_idx,const double* x, double* y) {
+void spmv_cpu(int n, const double* values, const int* row_ptr, const int* col_idx,
+    const double* x, double* y) {
     for (int i = 0; i < n; i++) {
         y[i] = 0.0;
         // 遍历第 i 行的所有非零元素

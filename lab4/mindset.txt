@@ -1,0 +1,49 @@
+// 主函数
+main():
+    Begin
+        // 必要的变量
+        数据规模 n, 最大迭代次数 max_iter;
+        稀疏矩阵 A, 参数向量 b, 解向量 x;
+
+        // 从文件中数据
+        Read(&n, &A, &b);
+
+        // 调用cg函数
+        cg(n, A, b, &x, max_iter);
+
+        // 输出解向量
+        print(x);
+    End
+
+// 共轭梯度法求解函数
+cg(n, A, b, x, max_iter):
+    Begin
+        // CPU 变量-- Host端
+        矩阵A;
+        向量 r, p, Ap;
+
+        // GPU 变量-- Device端
+        矩阵dA;
+        向量 dp, dap;
+
+        // 初始化
+        Init(&r, &p, &Ap);
+
+        // 将矩阵 A 拷贝至 GPU
+        Copy_Host_To_Device(&A, &dA);
+
+        // 关键迭代
+        for i = 1 to max_iter do
+            // 将向量 p 拷贝至 GPU
+            Copy_Host_To_Device(&p, &dp);
+
+            // kernel函数：CPU调用，GPU执行
+            GPU_spmv(n, dA, dp, dap);
+
+            // 将计算出的向量 dap 拷贝至 Ap
+            Copy_Device_To_Host(&dap, &Ap);
+
+            // 点积计算与向量更新
+            Update(&r, &x, &p);
+        end for
+    End

@@ -30,7 +30,7 @@ int main() {
     double t_calc, t_check;
     
     for (int i = 0; i < N; i++) {
-      x[i] = i;
+        x[i] = i;
     }
     hipMemcpy(dx, x, size, hipMemcpyHostToDevice);
 

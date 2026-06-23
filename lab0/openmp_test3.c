@@ -10,12 +10,13 @@ int get_pi();
 int main(){
     double x, sum, pi = 0.0;
     omp_set_num_threads(num_threads);
-    #pragma omp parallel private(x, sum)
+    #pragma omp parallel private(x, sum) shared(pi)
     {
         int id = omp_get_thread_num();
+        printf("I'm %d.\n", id);
         sum = 0.0;
         for(int i = id; i < num_steps; i += num_threads){
-            x = 1.0 * (i - 0.5) * (1.0 / (double)num_steps);
+            x = 1.0 * (i + 0.5) * (1.0 / (double)num_steps);
             sum += 4.0 / (1.0 + x * x);
         }
         #pragma omp critical
@@ -35,7 +36,7 @@ int get_pi(){
     {
         int id = omp_get_thread_num();
         for(int i = id; i < num_steps; i += num_threads){
-            x = 1.0 * (i - 0.5) * (1.0 / (double)num_steps);
+            x = 1.0 * (i + 0.5) * (1.0 / (double)num_steps);
             sum += 4.0 / (1.0 + x * x);
         }
     }

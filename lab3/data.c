@@ -84,8 +84,11 @@ int main(int argc, char *argv[]) {
     }
     
     // 写入文件
-    FILE *fd1 = fopen("matrix.txt", "w");
-    FILE *fd2 = fopen("vector.txt", "w");
+    char matrixName[100], vectorName[100];
+    sprintf(matrixName, "matrix_%d.txt", n); 
+    sprintf(vectorName, "vecor_%d.txt", n);
+    FILE *fd1 = fopen(matrixName, "w");
+    FILE *fd2 = fopen(vectorName, "w");
     
     if (fd1 == NULL || fd2 == NULL) {
         fprintf(stderr, "File open error!\n");
@@ -135,7 +138,7 @@ int main(int argc, char *argv[]) {
     printf("Matrix size: %d x %d\n", n, n);
     printf("Non-zero elements: %d\n", actual_nnz);
     printf("Sparsity: %.2f%%\n", (1.0 - (double)actual_nnz / (n * n)) * 100);
-    printf("Files created: matrix.txt and vector.txt\n");
+    printf("Files created: %s and %s\n", matrixName, vectorName);
     
     // 清理
     fclose(fd1);
