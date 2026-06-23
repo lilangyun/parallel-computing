@@ -1,0 +1,32 @@
+# 忽略可执行文件（Windows/Linux/Mac）
+*.exe
+*.out
+*.app
+
+# 忽略编译中间文件
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+
+# 忽略 VS Code 编辑器配置
+.vscode/
+
+# 忽略其他常见杂项
+*.log
+*.tmp
+*.swp
+*.bak
+
+# 忽略 IDE 目录（如 CLion, IDEA 等）
+.idea/
+cmake-build-debug/
+cmake-build-release/
+
+# 忽略编译生成的目录
+build/
+bin/
+lib/
