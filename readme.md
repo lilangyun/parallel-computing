@@ -148,14 +148,3 @@ export OMP_NUM_THREADS=4
 ## 许可证
 
 本项目仅供学习交流使用。
-```
-
----
-
-直接复制上面的内容，在仓库根目录创建 `README.md` 文件并粘贴即可。然后提交推送：
-
-```bash
-git add README.md
-git commit -m "docs: 添加 README 运行指南"
-git push
-```
