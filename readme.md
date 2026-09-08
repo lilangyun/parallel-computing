@@ -145,6 +145,8 @@ export OMP_NUM_THREADS=4
 - **作者**：李浪云
 - **仓库地址**：https://gitee.com/lilangyun/parallel-computing
 
+---
+
 ## 许可证
 
 本项目仅供学习交流使用。
