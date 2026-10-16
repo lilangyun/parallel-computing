@@ -143,7 +143,7 @@ export OMP_NUM_THREADS=4
 ## 作者
 
 - **作者**：李浪云
-- **仓库地址**：https://gitee.com/lilangyun/parallel-computing
+- **仓库地址**：https://github.com/lilangyun/parallel-computing
 
 ---
 
